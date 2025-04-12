@@ -22,6 +22,8 @@ const formSchema = z.object({
   rank: z.coerce.number().min(1, "Rank must be at least 1"),
   percentile: z.coerce.number().min(0, "Percentile must be at least 0").max(100, "Percentile must be at most 100"),
   score: z.coerce.number().min(0, "Score must be at least 0").max(15, "Score must be at most 15"),
+  userId: z.number().optional(),
+  testId: z.number().optional()
 });
 
 interface UpdateScoreModalProps {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import ComparisonGraph from "@/components/ComparisonGraph";
 import UpdateScoreModal from "@/components/UpdateScoreModal";
 import { format } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 
 interface SkillTest {
   id: number;
@@ -42,30 +43,79 @@ interface TestResultResponse {
 
 const SkillTest: React.FC = () => {
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const { toast } = useToast();
+  
+  // State for displaying data, either from API or from the local update
+  const [testData, setTestData] = useState<{
+    test: SkillTest | null;
+    result: TestResult | null;
+    syllabusResults: SyllabusResult[];
+  }>({
+    test: null,
+    result: null,
+    syllabusResults: []
+  });
   
   // Fetch test result data
-  const { data, isLoading } = useQuery<TestResultResponse>({
+  const { data, isLoading } = useQuery({
     queryKey: ['/api/test-results/1'],
   });
+  
+  // When API data changes, update our state
+  useEffect(() => {
+    if (data) {
+      setTestData({
+        test: data.test,
+        result: data.result,
+        syllabusResults: data.syllabusResults
+      });
+    }
+  }, [data]);
   
   // Update score mutation
   const updateMutation = useMutation({
     mutationFn: async (updateData: { rank: number; percentile: number; score: number }) => {
-      if (!data?.result.id) return null;
-      const res = await apiRequest('PUT', `/api/test-results/${data.result.id}`, updateData);
+      if (!testData.result?.id) return null;
+      const res = await apiRequest('PUT', `/api/test-results/${testData.result.id}`, updateData);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/test-results/1'] });
+      toast({
+        title: "Success!",
+        description: "Your scores have been updated successfully.",
+      });
     },
+    onError: (error) => {
+      console.error("Update error:", error);
+      toast({
+        title: "Update failed",
+        description: "Failed to update your scores. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
   
   const handleUpdateScore = (values: { rank: number; percentile: number; score: number }) => {
+    // Update local state immediately for responsive UI
+    if (testData.result) {
+      setTestData({
+        ...testData,
+        result: {
+          ...testData.result,
+          rank: values.rank,
+          percentile: values.percentile,
+          score: values.score
+        }
+      });
+    }
+    
+    // Send update to the server
     updateMutation.mutate(values);
     setIsUpdateModalOpen(false);
   };
   
-  if (isLoading) {
+  if (isLoading && !testData.result) {
     return (
       <div className="space-y-4">
         <div className="h-8 w-40 bg-gray-200 rounded animate-pulse"></div>
@@ -79,11 +129,12 @@ const SkillTest: React.FC = () => {
     );
   }
   
-  if (!data) {
+  const { test, result, syllabusResults } = testData;
+  
+  if (!test || !result) {
     return <div>No test results found.</div>;
   }
   
-  const { test, result, syllabusResults } = data;
   const submittedDate = new Date(test.submittedAt);
   
   return (

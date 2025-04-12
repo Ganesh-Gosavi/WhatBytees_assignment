@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { z } from "zod";
 import { 
   insertSkillTestResultSchema,
   SkillTestResult,
@@ -105,9 +106,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const updateData = req.body;
+      console.log("Update data received:", updateData);
       
-      // Validate update data
-      const validationResult = insertSkillTestResultSchema.partial().safeParse(updateData);
+      // Use a more permissive validation that only checks the fields we care about
+      const updateSchema = z.object({
+        rank: z.number().min(1).optional(),
+        percentile: z.number().min(0).max(100).optional(),
+        score: z.number().min(0).max(15).optional(),
+      });
+      
+      const validationResult = updateSchema.safeParse(updateData);
       if (!validationResult.success) {
         return res.status(400).json({ 
           message: "Invalid update data", 
@@ -115,9 +123,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const updatedResult = await storage.updateTestResult(id, updateData);
+      // Only include the fields we want to update
+      const filteredUpdateData = {
+        ...(updateData.rank !== undefined && { rank: updateData.rank }),
+        ...(updateData.percentile !== undefined && { percentile: updateData.percentile }),
+        ...(updateData.score !== undefined && { score: updateData.score }),
+      };
+      
+      const updatedResult = await storage.updateTestResult(id, filteredUpdateData);
       return res.json(updatedResult);
     } catch (error) {
+      console.error("Error updating test result:", error);
       return res.status(500).json({ message: "Failed to update test result" });
     }
   });
